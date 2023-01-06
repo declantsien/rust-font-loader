@@ -18,22 +18,30 @@
 
 /// Font loading utilities for installed system fonts
 pub mod system_fonts {
-    use servo_fontconfig::fontconfig::{FcConfig, FcInitLoadConfigAndFonts, FcNameParse};
-    use servo_fontconfig::fontconfig::{FcPattern, FcPatternCreate, FcPatternDestroy, FcFontMatch};
-    use servo_fontconfig::fontconfig::{FcFontList, FcObjectSetBuild, FcChar8, FcDefaultSubstitute};
-    use servo_fontconfig::fontconfig::{FcPatternGetString, FcPatternAddInteger, FcPatternGetInteger};
-    use servo_fontconfig::fontconfig::{FcResultMatch, FcMatchPattern, FcResultNoMatch, FcConfigSubstitute};
     use servo_fontconfig::fontconfig::FcPatternAddString;
+    use servo_fontconfig::fontconfig::{
+        FcChar8, FcDefaultSubstitute, FcFontList, FcObjectSetBuild,
+    };
+    use servo_fontconfig::fontconfig::{FcConfig, FcInitLoadConfigAndFonts, FcNameParse};
+    use servo_fontconfig::fontconfig::{FcConfigGetFontDirs, FcStrList};
+    use servo_fontconfig::fontconfig::{
+        FcConfigSubstitute, FcMatchPattern, FcResultMatch, FcResultNoMatch,
+    };
+    use servo_fontconfig::fontconfig::{FcFontMatch, FcPattern, FcPatternCreate, FcPatternDestroy};
+    use servo_fontconfig::fontconfig::{
+        FcPatternAddInteger, FcPatternGetInteger, FcPatternGetString, FcStrListDone, FcStrListNext,
+        FcStrSet,
+    };
 
-    use libc::{c_int, c_char};
+    use libc::{c_char, c_int};
 
+    use std::ffi::{CStr, CString};
+    use std::fs::File;
+    use std::io::prelude::*;
     use std::ptr;
     use std::slice;
-    use std::ffi::{CStr, CString};
-    use std::io::prelude::*;
-    use std::fs::File;
 
-    use std::sync::{Once, ONCE_INIT};
+    use std::sync::Once;
 
     static FC_FAMILY: &'static [u8] = b"family\0";
     static FC_FILE: &'static [u8] = b"file\0";
@@ -70,7 +78,7 @@ pub mod system_fonts {
     static FC_MONO: c_int = 100;
     // 	static FC_CHARCELL: c_int = 110;
 
-    static INIT_FONTCONFIG: Once = ONCE_INIT;
+    static INIT_FONTCONFIG: Once = Once::new();
     static mut CONFIG: *mut FcConfig = 0 as *mut FcConfig;
 
     fn init() -> *mut FcConfig {
@@ -139,7 +147,7 @@ pub mod system_fonts {
 
     /// Get the binary data and index of a specific font
     /// Note that only truetype fonts are supported
-    pub fn get(property: &FontProperty) -> Option<(Vec<u8>, c_int)> {
+    pub fn get(property: &FontProperty) -> Option<(Vec<u8>, c_int, String)> {
         let config = init();
         let family: &str = &property.family;
 
@@ -157,13 +165,14 @@ pub mod system_fonts {
             if font_pat.is_null() {
                 None
             } else {
+                let family = get_string(font_pat, FC_FAMILY).unwrap();
                 let file = get_string(font_pat, FC_FILE).unwrap();
                 let index = get_int(font_pat, FC_INDEX).unwrap();
                 FcPatternDestroy(font_pat);
                 let mut file = File::open(file).unwrap();
                 let mut buf: Vec<u8> = Vec::new();
                 let _ = file.read_to_end(&mut buf);
-                Some((buf, index))
+                Some((buf, index, family))
             }
         }
     }
@@ -186,7 +195,9 @@ pub mod system_fonts {
             if !property.family.is_empty() {
                 add_string(pattern, FC_FAMILY, &property.family);
             }
-            property.spacing.map(|spacing| add_int(pattern, FC_SPACING, spacing));
+            property
+                .spacing
+                .map(|spacing| add_int(pattern, FC_SPACING, spacing));
             add_int(pattern, FC_WEIGHT, property.weight);
             add_int(pattern, FC_SLANT, property.slant);
 
@@ -245,6 +256,54 @@ pub mod system_fonts {
                 Ok(string)
             } else {
                 Err("Type didn't match")
+            }
+        }
+    }
+
+    pub fn get_font_dirs() -> Vec<String> {
+        let config = init();
+        let mut dirs = Vec::new();
+        unsafe {
+            let lang_strs: *mut FcStrList = FcConfigGetFontDirs(config);
+            for dir in StrList::from_raw(lang_strs) {
+                dirs.push(dir.to_string());
+            }
+        }
+        dirs
+    }
+
+    pub struct StrList<'a> {
+        list: *mut FcStrList,
+        _life: std::marker::PhantomData<&'a FcStrList>,
+    }
+
+    impl<'a> StrList<'a> {
+        unsafe fn from_raw(raw_list: *mut FcStrSet) -> Self {
+            Self {
+                list: raw_list,
+                _life: std::marker::PhantomData,
+            }
+        }
+    }
+
+    impl<'a> Drop for StrList<'a> {
+        fn drop(&mut self) {
+            unsafe { FcStrListDone(self.list) };
+        }
+    }
+
+    impl<'a> Iterator for StrList<'a> {
+        type Item = &'a str;
+
+        fn next(&mut self) -> Option<&'a str> {
+            let lang_str: *mut FcChar8 = unsafe { FcStrListNext(self.list) };
+            if lang_str.is_null() {
+                None
+            } else {
+                match unsafe { CStr::from_ptr(lang_str as *const c_char) }.to_str() {
+                    Ok(s) => Some(s),
+                    _ => self.next(),
+                }
             }
         }
     }

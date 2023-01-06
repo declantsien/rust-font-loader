@@ -20,20 +20,13 @@ extern crate font_loader as fonts;
 
 use fonts::system_fonts;
 
+#[cfg(all(unix, not(target_os = "macos")))]
 fn main() {
-	// Enumerate all fonts
-    let sysfonts = system_fonts::query_all();
-    for string in &sysfonts {
-        println!("{}", string);
+    let dirs = system_fonts::get_font_dirs();
+    for dir in &dirs {
+        println!("{}", dir);
     }
 
-	let mut property = system_fonts::FontPropertyBuilder::new().monospace().build();
-	let sysfonts = system_fonts::query_specific(&mut property);
-	for string in &sysfonts {
-		println!("Monospaced font: {}", string);
-	}
-
-	let property = system_fonts::FontPropertyBuilder::new().family("Arial").build();
-	let (font, _) = system_fonts::get(&property).unwrap();
-	println!("{:?}", &font[..50]);
+    let family = system_fonts::family_name(" monospace").unwrap();
+    println!("{family:?}");
 }

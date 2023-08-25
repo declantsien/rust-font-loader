@@ -18,22 +18,22 @@
 
 /// Font loading utilities for installed system fonts
 pub mod system_fonts {
-    use servo_fontconfig::fontconfig::{FcConfig, FcInitLoadConfigAndFonts, FcNameParse};
+    use servo_fontconfig::fontconfig::{FcConfig, FcInitLoadConfigAndFonts, FcNameParse, FcStrList, FcConfigGetFontDirs, FcStrSet, FcStrListDone, FcStrListNext};
     use servo_fontconfig::fontconfig::{FcPattern, FcPatternCreate, FcPatternDestroy, FcFontMatch};
     use servo_fontconfig::fontconfig::{FcFontList, FcObjectSetBuild, FcChar8, FcDefaultSubstitute};
     use servo_fontconfig::fontconfig::{FcPatternGetString, FcPatternAddInteger, FcPatternGetInteger};
     use servo_fontconfig::fontconfig::{FcResultMatch, FcMatchPattern, FcResultNoMatch, FcConfigSubstitute};
     use servo_fontconfig::fontconfig::FcPatternAddString;
 
-    use libc::{c_int, c_char};
+    use libc::{c_char, c_int};
 
+    use std::ffi::{CStr, CString};
+    use std::fs::File;
+    use std::io::Read;
     use std::ptr;
     use std::slice;
-    use std::ffi::{CStr, CString};
-    use std::io::prelude::*;
-    use std::fs::File;
 
-    use std::sync::{Once, ONCE_INIT};
+    use std::sync::Once;
 
     static FC_FAMILY: &'static [u8] = b"family\0";
     static FC_FILE: &'static [u8] = b"file\0";
@@ -70,7 +70,7 @@ pub mod system_fonts {
     static FC_MONO: c_int = 100;
     // 	static FC_CHARCELL: c_int = 110;
 
-    static INIT_FONTCONFIG: Once = ONCE_INIT;
+    static INIT_FONTCONFIG: Once = Once::new();
     static mut CONFIG: *mut FcConfig = 0 as *mut FcConfig;
 
     fn init() -> *mut FcConfig {
@@ -168,6 +168,29 @@ pub mod system_fonts {
         }
     }
 
+    pub fn family_name(family: &str) -> Option<String> {
+        let config = init();
+
+        unsafe {
+            let name = CString::new(family).unwrap();
+            let pat = FcNameParse(name.as_ptr() as *const FcChar8);
+            // add_int(pat, FC_SLANT, property.slant);
+            // add_int(pat, FC_WEIGHT, property.weight);
+            FcConfigSubstitute(config, pat, FcMatchPattern);
+            FcDefaultSubstitute(pat);
+
+            let mut result = FcResultNoMatch;
+            let font_pat = FcFontMatch(config, pat, &mut result);
+
+            if font_pat.is_null() {
+                None
+            } else {
+                let family = get_string(font_pat, FC_FAMILY).unwrap();
+                Some(family)
+            }
+        }
+    }
+
     /// Query the names of all fonts installed in the system
     /// Note that only truetype fonts are supported
     pub fn query_all() -> Vec<String> {
@@ -245,6 +268,56 @@ pub mod system_fonts {
                 Ok(string)
             } else {
                 Err("Type didn't match")
+            }
+        }
+    }
+
+    pub fn get_font_dirs() -> Vec<String> {
+        let config = init();
+        let mut dirs = Vec::new();
+        unsafe {
+            let lang_strs: *mut FcStrList = FcConfigGetFontDirs(config);
+            for dir in StrList::from_raw(lang_strs) {
+                dirs.push(dir.to_string());
+            }
+        }
+        dirs
+    }
+
+    // code borrowed here
+    // https://github.com/yeslogic/fontconfig-rs/blob/v0.6.0/fontconfig/src/lib.rs#L408
+    pub struct StrList<'a> {
+        list: *mut FcStrList,
+        _life: std::marker::PhantomData<&'a FcStrList>,
+    }
+
+    impl<'a> StrList<'a> {
+        unsafe fn from_raw(raw_list: *mut FcStrSet) -> Self {
+            Self {
+                list: raw_list,
+                _life: std::marker::PhantomData,
+            }
+        }
+    }
+
+    impl<'a> Drop for StrList<'a> {
+        fn drop(&mut self) {
+            unsafe { FcStrListDone(self.list) };
+        }
+    }
+
+    impl<'a> Iterator for StrList<'a> {
+        type Item = &'a str;
+
+        fn next(&mut self) -> Option<&'a str> {
+            let lang_str: *mut FcChar8 = unsafe { FcStrListNext(self.list) };
+            if lang_str.is_null() {
+                None
+            } else {
+                match unsafe { CStr::from_ptr(lang_str as *const c_char) }.to_str() {
+                    Ok(s) => Some(s),
+                    _ => self.next(),
+                }
             }
         }
     }

@@ -27,13 +27,16 @@ fn main() {
         println!("{}", string);
     }
 
-	let mut property = system_fonts::FontPropertyBuilder::new().monospace().build();
-	let sysfonts = system_fonts::query_specific(&mut property);
-	for string in &sysfonts {
-		println!("Monospaced font: {}", string);
-	}
+    let mut property = system_fonts::FontPropertyBuilder::new().monospace().build();
+    let sysfonts = system_fonts::query_specific(&mut property);
+    for string in &sysfonts {
+	println!("Monospaced font: {}", string);
+    }
 
-	let property = system_fonts::FontPropertyBuilder::new().family("Arial").build();
+    let property = system_fonts::FontPropertyBuilder::new().family("Arial").build();
+    let family_name = system_fonts::match_(&property).unwrap();
+    println!("match {:?}", family_name);
+
 	let (font, _) = system_fonts::get(&property).unwrap();
 	println!("{:?}", &font[..50]);
 }

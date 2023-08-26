@@ -137,6 +137,34 @@ pub mod system_fonts {
         }
     }
 
+    /// Match
+    /// Note that only truetype fonts are supported
+    /// Return family name of the matched font
+    pub fn match_(property: &FontProperty) -> Option<String> {
+        let config = init();
+        let family: &str = &property.family;
+
+        unsafe {
+            let name = CString::new(family).unwrap();
+            let pat = FcNameParse(name.as_ptr() as *const FcChar8);
+            add_int(pat, FC_SLANT, property.slant);
+            add_int(pat, FC_WEIGHT, property.weight);
+            FcConfigSubstitute(config, pat, FcMatchPattern);
+            FcDefaultSubstitute(pat);
+
+            let mut result = FcResultNoMatch;
+            let font_pat = FcFontMatch(config, pat, &mut result);
+
+            if font_pat.is_null() {
+                None
+            } else {
+		let family_name = get_string(font_pat, FC_FAMILY).unwrap();
+		FcPatternDestroy(font_pat);
+		Some(family_name)
+            }
+        }
+    }
+
     /// Get the binary data and index of a specific font
     /// Note that only truetype fonts are supported
     pub fn get(property: &FontProperty) -> Option<(Vec<u8>, c_int)> {

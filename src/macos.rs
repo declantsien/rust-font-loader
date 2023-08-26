@@ -86,6 +86,33 @@ pub mod system_fonts {
         }
     }
 
+    /// WARN untested
+    /// Match
+    /// Note that only truetype fonts are supported
+    /// Return family name of the matched font
+    pub fn match_(property: &FontProperty) -> Option<String> {
+	let mut buffer = Vec::new();
+        let family_name: CFString;
+        unsafe {
+            let value =
+                CTFontDescriptorCopyAttribute(config.as_concrete_TypeRef(), kCTFontFamilyNameAttribute);
+
+            if value.is_null() {
+                return None
+            }
+
+            let value: CFType = TCFType::wrap_under_get_rule(value);
+            if !value.instance_of::<CFString>() {
+                return None
+            }
+            family_name = TCFType::wrap_under_get_rule(mem::transmute(value.as_CFTypeRef()));
+        }
+        if let Some(family_name) = (family_name) {
+            return Some(family_name.to_string());
+        };
+        return None
+    }
+
     /// Get the binary data and index of a specific font
     pub fn get(config: &FontProperty) -> Option<(Vec<u8>, c_int)> {
         let mut buffer = Vec::new();

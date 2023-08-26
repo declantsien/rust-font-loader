@@ -101,6 +101,13 @@ pub mod system_fonts {
         }
     }
 
+    /// Match
+    /// Note that only truetype fonts are supported
+    /// Return family name of the matched font
+    pub fn match_(property: &FontProperty) -> Option<String> {
+	todo!()
+    }
+
     /// Get the binary data and index of a specific font
     /// Note that only truetype fonts are supported
     pub fn get(config: &FontProperty) -> Option<(Vec<u8>, c_int)> {

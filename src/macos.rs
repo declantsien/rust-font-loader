@@ -88,7 +88,6 @@ pub mod system_fonts {
 
     /// WARN untested
     /// Match
-    /// Note that only truetype fonts are supported
     /// Return family name of the matched font
     pub fn match_(property: &FontProperty) -> Option<String> {
 	let mut buffer = Vec::new();

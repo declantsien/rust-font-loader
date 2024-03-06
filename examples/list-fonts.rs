@@ -21,7 +21,8 @@ extern crate font_loader as fonts;
 use fonts::system_fonts;
 
 fn main() {
-	// Enumerate all fonts
+
+    // Enumerate all fonts
     let sysfonts = system_fonts::query_all();
     for string in &sysfonts {
         println!("{}", string);
